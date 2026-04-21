@@ -1,7 +1,9 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-
-export default function TabLayout() {
+import { useAuthStore } from '../../store/authStore';
+export default function ActivityScreen() {
+  const { user } = useAuthStore();
+  const DEVICE_SERIAL = user?.device_serial || 'SE-2026-X00';
   return (
     <Tabs
       screenOptions={{

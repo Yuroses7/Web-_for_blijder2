@@ -1,10 +1,14 @@
 import { create } from 'zustand';
 import { API_BASE_URL } from '../constants/api';
 
-interface User {
+export interface User {
   user_id: number;
-  full_name: string;
   username: string;
+  full_name: string;
+  emergency_contact?: string;
+  disability_details?: string;
+  role: 'caregiver' | 'admin';
+  device_serial?: string;  // ✅ เพิ่ม
 }
 
 interface AuthState {
@@ -23,6 +27,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   isLoading: false,
 
 
+
 login: async (username, password) => {
   set({ isLoading: true });
   try {
@@ -32,17 +37,23 @@ login: async (username, password) => {
       body: JSON.stringify({ username, password }),
     });
 
-    if (!res.ok) {
-      set({ isLoading: false });
-      return false;
-    }
+    if (!res.ok) { set({ isLoading: false }); return false; }
 
     const user = await res.json();
+
+    // ✅ ดึง device ของ user นี้
+    const devRes = await fetch(`${API_BASE_URL}/auth/devices/${user.user_id}`);
+    if (devRes.ok) {
+      const devices = await devRes.json();
+      if (devices.length > 0) {
+        user.device_serial = devices[0].device_serial;
+      }
+    }
+
     set({ isAuthenticated: true, isLoading: false, user });
     return true;
 
   } catch (e) {
-    console.error('Login error:', e);
     set({ isLoading: false });
     return false;
   }

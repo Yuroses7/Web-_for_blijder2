@@ -1,22 +1,54 @@
-# Environment variables
+# ─── Python / FastAPI ───────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+env/
+
+# ─── Environment Variables (สำคัญมาก! ห้าม push) ────────────
 .env
 .env.local
-.env.development
 .env.production
 
-# Python cache
-__pycache__/
-*.pyc
-*.pyo
+# ─── Database ───────────────────────────────────────────────
+*.db
+*.sqlite3
 
-# ML Models (ไฟล์ใหญ่มาก ไม่ควร push)
+# ─── AI Models (ไฟล์ใหญ่มาก ห้าม push เด็ดขาด) ─────────────
+backend/checkpoints/
 *.pt
 *.pth
 *.onnx
-checkpoints/
 
-# Backend generated files (สร้างเองได้ ไม่ต้อง push)
-backend/audio/
-backend/outputs/
+# ─── Upload / Output / Audio (generated files) ──────────────
 backend/uploads/
-node_modules
+backend/outputs/
+backend/audio/
+
+# ─── Node / React Native / Expo ─────────────────────────────
+node_modules/
+.expo/
+dist/
+web-build/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# ─── Logs ───────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ─── OS ─────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini

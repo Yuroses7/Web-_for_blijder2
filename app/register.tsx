@@ -1,19 +1,21 @@
+import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity,
   ActivityIndicator, Alert, KeyboardAvoidingView,
-  Platform, StatusBar, ScrollView,
+  Platform, ScrollView, StatusBar,
+  Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { API_BASE_URL } from '../constants/api';
 
 interface RegisterForm {
-  username: string;
-  password: string;
-  confirmPassword: string;
-  full_name: string;
-  emergency_contact: string;
+  username:           string;
+  password:           string;
+  confirmPassword:    string;
+  full_name:          string;
+  emergency_contact:  string;
   disability_details: string;
+  device_serial:      string;  // ✅ เพิ่ม
+  device_name:        string;  // ✅ เพิ่ม
 }
 
 export default function RegisterScreen() {
@@ -21,24 +23,26 @@ export default function RegisterScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [form, setForm] = useState<RegisterForm>({
-    username: '',
-    password: '',
-    confirmPassword: '',
-    full_name: '',
-    emergency_contact: '',
+    username:           '',
+    password:           '',
+    confirmPassword:    '',
+    full_name:          '',
+    emergency_contact:  '',
     disability_details: '',
+    device_serial:      '',  // ✅ เพิ่ม
+    device_name:        'Seeing Eyes Glass',  // ✅ default
   });
 
   const update = (key: keyof RegisterForm) => (val: string) =>
     setForm(prev => ({ ...prev, [key]: val }));
 
   const validate = (): string | null => {
-    if (!form.username.trim())       return 'กรุณากรอก Username';
-    if (form.username.length < 4)    return 'Username ต้องมีอย่างน้อย 4 ตัวอักษร';
-    if (!form.password)              return 'กรุณากรอก Password';
-    if (form.password.length < 6)    return 'Password ต้องมีอย่างน้อย 6 ตัวอักษร';
+    if (!form.username.trim())          return 'กรุณากรอก Username';
+    if (form.username.length < 4)       return 'Username ต้องมีอย่างน้อย 4 ตัวอักษร';
+    if (!form.password)                 return 'กรุณากรอก Password';
+    if (form.password.length < 6)       return 'Password ต้องมีอย่างน้อย 6 ตัวอักษร';
     if (form.password !== form.confirmPassword) return 'Password ไม่ตรงกัน';
-    if (!form.full_name.trim())      return 'กรุณากรอกชื่อ-นามสกุล';
+    if (!form.full_name.trim())         return 'กรุณากรอกชื่อ-นามสกุล';
     if (!form.emergency_contact.trim()) return 'กรุณากรอกเบอร์ติดต่อฉุกเฉิน';
     return null;
   };
@@ -46,6 +50,7 @@ export default function RegisterScreen() {
   const handleRegister = async () => {
     const error = validate();
     if (error) {
+      if (Platform.OS === 'web') { window.alert(error); return; }
       Alert.alert('ข้อมูลไม่ครบ', error);
       return;
     }
@@ -56,25 +61,37 @@ export default function RegisterScreen() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          username:          form.username.trim(),
-          password:          form.password,
-          full_name:         form.full_name.trim(),
-          emergency_contact: form.emergency_contact.trim(),
+          username:           form.username.trim(),
+          password:           form.password,
+          full_name:          form.full_name.trim(),
+          emergency_contact:  form.emergency_contact.trim(),
           disability_details: form.disability_details.trim() || null,
+          device_serial:      form.device_serial.trim() || null,  // ✅ ส่งไปด้วย
+          device_name:        form.device_name.trim() || 'Seeing Eyes Glass',
         }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.detail || 'สมัครสมาชิกไม่สำเร็จ');
+        const msg = data.detail || 'สมัครสมาชิกไม่สำเร็จ';
+        if (Platform.OS === 'web') { window.alert(msg); return; }
+        Alert.alert('เกิดข้อผิดพลาด', msg);
+        return;
       }
 
-      Alert.alert('สมัครสมาชิกสำเร็จ! 🎉', 'เข้าสู่ระบบได้เลยครับ', [
-        { text: 'ตกลง', onPress: () => router.replace('/') },
-      ]);
+      if (Platform.OS === 'web') {
+        window.alert('สมัครสมาชิกสำเร็จ! 🎉 เข้าสู่ระบบได้เลยครับ');
+        router.replace('/');
+      } else {
+        Alert.alert('สมัครสมาชิกสำเร็จ! 🎉', 'เข้าสู่ระบบได้เลยครับ', [
+          { text: 'ตกลง', onPress: () => router.replace('/') },
+        ]);
+      }
     } catch (err: any) {
-      Alert.alert('เกิดข้อผิดพลาด', err.message || 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้');
+      const msg = err.message || 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้';
+      if (Platform.OS === 'web') { window.alert(msg); return; }
+      Alert.alert('เกิดข้อผิดพลาด', msg);
     } finally {
       setIsLoading(false);
     }
@@ -106,7 +123,6 @@ export default function RegisterScreen() {
           {/* Form Card */}
           <View className="w-full bg-white rounded-2xl p-6 shadow-lg">
 
-            {/* Username */}
             <Field label="Username *">
               <InputRow icon="👤">
                 <TextInput
@@ -121,7 +137,6 @@ export default function RegisterScreen() {
               </InputRow>
             </Field>
 
-            {/* Full Name */}
             <Field label="ชื่อ-นามสกุล *">
               <InputRow icon="📛">
                 <TextInput
@@ -134,7 +149,6 @@ export default function RegisterScreen() {
               </InputRow>
             </Field>
 
-            {/* Password */}
             <Field label="Password *">
               <InputRow icon="🔒">
                 <TextInput
@@ -151,7 +165,6 @@ export default function RegisterScreen() {
               </InputRow>
             </Field>
 
-            {/* Confirm Password */}
             <Field label="ยืนยัน Password *">
               <InputRow icon="🔒">
                 <TextInput
@@ -162,7 +175,6 @@ export default function RegisterScreen() {
                   onChangeText={update('confirmPassword')}
                   secureTextEntry={!showPassword}
                 />
-                {/* ไฟเขียว/แดงบอกว่าตรงกันไหม */}
                 {form.confirmPassword.length > 0 && (
                   <Text className="text-base">
                     {form.password === form.confirmPassword ? '✅' : '❌'}
@@ -171,7 +183,6 @@ export default function RegisterScreen() {
               </InputRow>
             </Field>
 
-            {/* Emergency Contact */}
             <Field label="เบอร์ติดต่อฉุกเฉิน *">
               <InputRow icon="📞">
                 <TextInput
@@ -185,7 +196,21 @@ export default function RegisterScreen() {
               </InputRow>
             </Field>
 
-            {/* Disability Details (optional) */}
+            {/* ✅ Device Serial — field ใหม่ */}
+            <Field label="Device Serial (จากแว่นตา ESP32)">
+              <InputRow icon="📡">
+                <TextInput
+                  className="flex-1 text-gray-900 text-base"
+                  placeholder="เช่น SE-001, SN-EYES-001"
+                  placeholderTextColor="#9CA3AF"
+                  value={form.device_serial}
+                  onChangeText={update('device_serial')}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                />
+              </InputRow>
+            </Field>
+
             <Field label="รายละเอียดความพิการ (ถ้ามี)">
               <View className="border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50 min-h-[72px]">
                 <TextInput
@@ -201,7 +226,6 @@ export default function RegisterScreen() {
               </View>
             </Field>
 
-            {/* Register Button */}
             <TouchableOpacity
               className={`bg-[#0D6E4F] rounded-xl h-14 items-center justify-center mt-2 ${isLoading ? 'opacity-70' : ''}`}
               onPress={handleRegister}
@@ -214,7 +238,6 @@ export default function RegisterScreen() {
               }
             </TouchableOpacity>
 
-            {/* Back to Login */}
             <TouchableOpacity
               className="items-center mt-4"
               onPress={() => router.replace('/')}
@@ -232,7 +255,6 @@ export default function RegisterScreen() {
   );
 }
 
-// ── Reusable mini-components ──────────────────────────────
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <View className="mb-4">

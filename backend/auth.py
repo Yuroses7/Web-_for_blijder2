@@ -7,7 +7,6 @@ from models import users, devices, job_logs
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
-# ✅ ใช้ CryptContext แทน bcrypt โดยตรง
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # ─── Schemas ────────────────────────────────────────────────
@@ -18,6 +17,8 @@ class RegisterRequest(BaseModel):
     full_name:          str
     emergency_contact:  str
     disability_details: Optional[str] = None
+    device_serial:      Optional[str] = None        # ✅ เพิ่ม
+    device_name:        Optional[str] = "Seeing Eyes Glass"  # ✅ เพิ่ม
 
 class LoginRequest(BaseModel):
     username: str
@@ -39,13 +40,33 @@ async def register(body: RegisterRequest):
         if existing:
             raise HTTPException(status_code=400, detail="Username นี้ถูกใช้แล้ว")
 
-        await database.execute(users.insert().values(
+        # ✅ เช็ค device_serial ซ้ำก่อน
+        if body.device_serial:
+            existing_device = await database.fetch_one(
+                devices.select().where(devices.c.device_serial == body.device_serial)
+            )
+            if existing_device:
+                raise HTTPException(status_code=400, detail="Device Serial นี้ถูกใช้แล้ว")
+
+        # บันทึก user
+        user_id = await database.execute(users.insert().values(
             username=          body.username,
-            password_hash=pwd_context.hash(body.password[:72]),
+            password_hash=     pwd_context.hash(body.password[:72]),
             full_name=         body.full_name,
             emergency_contact= body.emergency_contact,
             disability_details=body.disability_details,
         ))
+
+        # ✅ บันทึก device อัตโนมัติถ้ามี device_serial
+        if body.device_serial:
+            await database.execute(devices.insert().values(
+                device_serial= body.device_serial,
+                user_id=       user_id,
+                device_name=   body.device_name or "Seeing Eyes Glass",
+                is_active=     True,
+            ))
+            print(f"✓ Device {body.device_serial} linked to user {user_id}")
+
         return {"message": "สมัครสมาชิกสำเร็จ"}
 
     except HTTPException:
@@ -62,9 +83,10 @@ async def login(body: LoginRequest):
         user = await database.fetch_one(
             users.select().where(users.c.username == body.username)
         )
-        if not user or not pwd_context.verify(body.password, user["password_hash"]):  # ✅ แก้แล้ว
+        if not user or not pwd_context.verify(body.password, user["password_hash"]):
             raise HTTPException(status_code=401, detail="Username หรือ Password ไม่ถูกต้อง")
-
+        device = await database.fetch_one(
+        devices.select().where(devices.c.user_id == user["user_id"]))
         return {
             "user_id":           user["user_id"],
             "username":          user["username"],
