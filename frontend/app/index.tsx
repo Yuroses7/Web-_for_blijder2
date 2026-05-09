@@ -18,8 +18,6 @@ export default function LoginScreen() {
     useEffect(() => {
         if (isAuthenticated) {
             router.replace('/(tabs)/dashboard' as any);
-        } else {
-            // ถ้า logout มาจากหน้าอื่น → อยู่ที่นี่แล้ว ไม่ต้องทำอะไร
         }
     }, [isAuthenticated]);
 
@@ -45,11 +43,13 @@ export default function LoginScreen() {
 
                 {/* Logo */}
                 <View className="items-center mb-8">
-                    <View className="w-20 h-20 rounded-full bg-white/10 border border-white/25 items-center justify-center mb-3">
-                        <Text className="text-4xl">👁</Text>
+                    <View className="w-20 h-20 rounded-full bg-white/10 border border-white/20 items-center justify-center mb-4">
+                        <View className="w-9 h-9 rounded-full border-2 border-white/80 items-center justify-center">
+                            <View className="w-3 h-3 rounded-full bg-white/80" />
+                        </View>
                     </View>
                     <Text className="text-3xl font-bold text-white tracking-wide">Seeing Eyes</Text>
-                    <Text className="text-sm text-white/60 mt-1">Caregiver Monitoring Portal</Text>
+                    <Text className="text-sm text-white/50 mt-1">Caregiver Monitoring Portal</Text>
                 </View>
 
                 {/* Card */}
@@ -58,26 +58,22 @@ export default function LoginScreen() {
 
                     {/* Username */}
                     <View className="mb-4">
-                        <Text className="text-sm font-semibold text-gray-700 mb-1">Username</Text>
-                        <View className="flex-row items-center border border-gray-200 rounded-xl px-3 bg-gray-50 h-12">
-                            <Text className="text-base mr-2">👤</Text>
-                            <TextInput
-                                className="flex-1 text-gray-900 text-base"
-                                placeholder="กรอก Username"
-                                placeholderTextColor="#9CA3AF"
-                                value={username}
-                                onChangeText={setUsername}
-                                autoCapitalize="none"
-                                autoCorrect={false}
-                            />
-                        </View>
+                        <Text className="text-sm font-medium text-gray-600 mb-1.5">Username</Text>
+                        <TextInput
+                            className="border border-gray-200 rounded-xl px-4 bg-gray-50 h-12 text-gray-900 text-base"
+                            placeholder="กรอก Username"
+                            placeholderTextColor="#9CA3AF"
+                            value={username}
+                            onChangeText={setUsername}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                        />
                     </View>
 
                     {/* Password */}
                     <View className="mb-4">
-                        <Text className="text-sm font-semibold text-gray-700 mb-1">Password</Text>
-                        <View className="flex-row items-center border border-gray-200 rounded-xl px-3 bg-gray-50 h-12">
-                            <Text className="text-base mr-2">🔒</Text>
+                        <Text className="text-sm font-medium text-gray-600 mb-1.5">Password</Text>
+                        <View className="flex-row items-center border border-gray-200 rounded-xl px-4 bg-gray-50 h-12">
                             <TextInput
                                 className="flex-1 text-gray-900 text-base"
                                 placeholder="กรอก Password"
@@ -88,16 +84,18 @@ export default function LoginScreen() {
                                 onSubmitEditing={handleLogin}
                             />
                             <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                                <Text className="text-base">{showPassword ? '🙈' : '👁'}</Text>
+                                <Text className="text-xs text-gray-400 font-medium">
+                                    {showPassword ? 'ซ่อน' : 'แสดง'}
+                                </Text>
                             </TouchableOpacity>
                         </View>
                     </View>
 
                     {/* Forgot / Register */}
                     <View className="flex-row justify-end mb-5">
-                        <Text className="text-sm text-gray-500">Forgot Password?</Text>
+                        <Text className="text-sm text-gray-400">Forgot Password?  </Text>
                         <TouchableOpacity onPress={() => router.push('/register' as any)}>
-                            <Text className="text-sm text-[#0D6E4F] font-semibold ml-2">Register</Text>
+                            <Text className="text-sm text-[#0D6E4F] font-semibold">Register</Text>
                         </TouchableOpacity>
                     </View>
 
@@ -110,14 +108,14 @@ export default function LoginScreen() {
                     >
                         {isLoading
                             ? <ActivityIndicator color="#fff" />
-                            : <Text className="text-white text-base font-bold">Login →</Text>
+                            : <Text className="text-white text-base font-semibold">Login</Text>
                         }
                     </TouchableOpacity>
 
-                    <Text className="text-center text-xs text-gray-400 mt-4">Demo: demo / demo1234</Text>
+                    <Text className="text-center text-xs text-gray-300 mt-4">Demo: demo / demo1234</Text>
                 </View>
 
-                <Text className="mt-6 text-xs text-white/40">© 2025 Seeing Eyes Inc. Secure Connection.</Text>
+                <Text className="mt-6 text-xs text-white/30">© 2025 Seeing Eyes Inc.</Text>
             </View>
         </KeyboardAvoidingView>
     );

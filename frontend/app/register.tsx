@@ -12,38 +12,45 @@ interface RegisterForm {
   password:           string;
   confirmPassword:    string;
   full_name:          string;
-  emergency_contact:  string;
   disability_details: string;
-  device_serial:      string;  // ✅ เพิ่ม
-  device_name:        string;  // ✅ เพิ่ม
+  device_serial:      string;
+  device_name:        string;
 }
 
 export default function RegisterScreen() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [phoneDigits, setPhoneDigits] = useState('');
   const [form, setForm] = useState<RegisterForm>({
     username:           '',
     password:           '',
     confirmPassword:    '',
     full_name:          '',
-    emergency_contact:  '',
     disability_details: '',
-    device_serial:      '',  // ✅ เพิ่ม
-    device_name:        'Seeing Eyes Glass',  // ✅ default
+    device_serial:      '',
+    device_name:        'Seeing Eyes Glass',
   });
 
   const update = (key: keyof RegisterForm) => (val: string) =>
     setForm(prev => ({ ...prev, [key]: val }));
 
+  const handlePhoneChange = (text: string) => {
+    const digits = text.replace(/\D/g, '');
+    const cleaned = digits.startsWith('0') ? digits.slice(1) : digits;
+    setPhoneDigits(cleaned.slice(0, 9));
+  };
+
+  const emergencyContact = '+66' + phoneDigits;
+
   const validate = (): string | null => {
-    if (!form.username.trim())          return 'กรุณากรอก Username';
-    if (form.username.length < 4)       return 'Username ต้องมีอย่างน้อย 4 ตัวอักษร';
-    if (!form.password)                 return 'กรุณากรอก Password';
-    if (form.password.length < 6)       return 'Password ต้องมีอย่างน้อย 6 ตัวอักษร';
+    if (!form.username.trim())    return 'กรุณากรอก Username';
+    if (form.username.length < 4) return 'Username ต้องมีอย่างน้อย 4 ตัวอักษร';
+    if (!form.password)           return 'กรุณากรอก Password';
+    if (form.password.length < 6) return 'Password ต้องมีอย่างน้อย 6 ตัวอักษร';
     if (form.password !== form.confirmPassword) return 'Password ไม่ตรงกัน';
-    if (!form.full_name.trim())         return 'กรุณากรอกชื่อ-นามสกุล';
-    if (!form.emergency_contact.trim()) return 'กรุณากรอกเบอร์ติดต่อฉุกเฉิน';
+    if (!form.full_name.trim())   return 'กรุณากรอกชื่อ-นามสกุล';
+    if (phoneDigits.length < 8)   return 'กรุณากรอกเบอร์ติดต่อฉุกเฉิน (8–9 หลัก)';
     return null;
   };
 
@@ -64,9 +71,9 @@ export default function RegisterScreen() {
           username:           form.username.trim(),
           password:           form.password,
           full_name:          form.full_name.trim(),
-          emergency_contact:  form.emergency_contact.trim(),
+          emergency_contact:  emergencyContact,
           disability_details: form.disability_details.trim() || null,
-          device_serial:      form.device_serial.trim() || null,  // ✅ ส่งไปด้วย
+          device_serial:      form.device_serial.trim() || null,
           device_name:        form.device_name.trim() || 'Seeing Eyes Glass',
         }),
       });
@@ -81,10 +88,10 @@ export default function RegisterScreen() {
       }
 
       if (Platform.OS === 'web') {
-        window.alert('สมัครสมาชิกสำเร็จ! 🎉 เข้าสู่ระบบได้เลยครับ');
+        window.alert('สมัครสมาชิกสำเร็จ กรุณาเข้าสู่ระบบ');
         router.replace('/');
       } else {
-        Alert.alert('สมัครสมาชิกสำเร็จ! 🎉', 'เข้าสู่ระบบได้เลยครับ', [
+        Alert.alert('สมัครสมาชิกสำเร็จ', 'กรุณาเข้าสู่ระบบ', [
           { text: 'ตกลง', onPress: () => router.replace('/') },
         ]);
       }
@@ -96,6 +103,11 @@ export default function RegisterScreen() {
       setIsLoading(false);
     }
   };
+
+  const passwordMatch = form.confirmPassword.length > 0
+    && form.password === form.confirmPassword;
+  const passwordMismatch = form.confirmPassword.length > 0
+    && form.password !== form.confirmPassword;
 
   return (
     <KeyboardAvoidingView
@@ -113,44 +125,42 @@ export default function RegisterScreen() {
 
           {/* Header */}
           <View className="items-center mb-6">
-            <View className="w-16 h-16 rounded-full bg-white/10 border border-white/25 items-center justify-center mb-3">
-              <Text className="text-3xl">👁</Text>
+            <View className="w-16 h-16 rounded-full bg-white/10 border border-white/20 items-center justify-center mb-4">
+              <View className="w-7 h-7 rounded-full border-2 border-white/80 items-center justify-center">
+                <View className="w-2.5 h-2.5 rounded-full bg-white/80" />
+              </View>
             </View>
             <Text className="text-2xl font-bold text-white">สมัครสมาชิก</Text>
-            <Text className="text-sm text-white/60 mt-1">Caregiver Account</Text>
+            <Text className="text-sm text-white/50 mt-1">Caregiver Account</Text>
           </View>
 
           {/* Form Card */}
           <View className="w-full bg-white rounded-2xl p-6 shadow-lg">
 
             <Field label="Username *">
-              <InputRow icon="👤">
-                <TextInput
-                  className="flex-1 text-gray-900 text-base"
-                  placeholder="ตัวอักษร + ตัวเลข อย่างน้อย 4 ตัว"
-                  placeholderTextColor="#9CA3AF"
-                  value={form.username}
-                  onChangeText={update('username')}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </InputRow>
+              <TextInput
+                className="border border-gray-200 rounded-xl px-4 bg-gray-50 h-12 text-gray-900 text-base"
+                placeholder="ตัวอักษร + ตัวเลข อย่างน้อย 4 ตัว"
+                placeholderTextColor="#9CA3AF"
+                value={form.username}
+                onChangeText={update('username')}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
             </Field>
 
             <Field label="ชื่อ-นามสกุล *">
-              <InputRow icon="📛">
-                <TextInput
-                  className="flex-1 text-gray-900 text-base"
-                  placeholder="เช่น Somsri Konthai"
-                  placeholderTextColor="#9CA3AF"
-                  value={form.full_name}
-                  onChangeText={update('full_name')}
-                />
-              </InputRow>
+              <TextInput
+                className="border border-gray-200 rounded-xl px-4 bg-gray-50 h-12 text-gray-900 text-base"
+                placeholder="เช่น Somsri Konthai"
+                placeholderTextColor="#9CA3AF"
+                value={form.full_name}
+                onChangeText={update('full_name')}
+              />
             </Field>
 
             <Field label="Password *">
-              <InputRow icon="🔒">
+              <View className="flex-row items-center border border-gray-200 rounded-xl px-4 bg-gray-50 h-12">
                 <TextInput
                   className="flex-1 text-gray-900 text-base"
                   placeholder="อย่างน้อย 6 ตัวอักษร"
@@ -160,13 +170,15 @@ export default function RegisterScreen() {
                   secureTextEntry={!showPassword}
                 />
                 <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                  <Text className="text-base">{showPassword ? '🙈' : '👁'}</Text>
+                  <Text className="text-xs text-gray-400 font-medium">
+                    {showPassword ? 'ซ่อน' : 'แสดง'}
+                  </Text>
                 </TouchableOpacity>
-              </InputRow>
+              </View>
             </Field>
 
             <Field label="ยืนยัน Password *">
-              <InputRow icon="🔒">
+              <View className="flex-row items-center border border-gray-200 rounded-xl px-4 bg-gray-50 h-12">
                 <TextInput
                   className="flex-1 text-gray-900 text-base"
                   placeholder="กรอก Password อีกครั้ง"
@@ -175,44 +187,46 @@ export default function RegisterScreen() {
                   onChangeText={update('confirmPassword')}
                   secureTextEntry={!showPassword}
                 />
-                {form.confirmPassword.length > 0 && (
-                  <Text className="text-base">
-                    {form.password === form.confirmPassword ? '✅' : '❌'}
-                  </Text>
+                {passwordMatch && (
+                  <Text className="text-xs text-green-500 font-medium">ตรงกัน</Text>
                 )}
-              </InputRow>
+                {passwordMismatch && (
+                  <Text className="text-xs text-red-400 font-medium">ไม่ตรงกัน</Text>
+                )}
+              </View>
             </Field>
 
             <Field label="เบอร์ติดต่อฉุกเฉิน *">
-              <InputRow icon="📞">
+              <View className="flex-row items-center border border-gray-200 rounded-xl bg-gray-50 h-12 overflow-hidden">
+                <View className="px-3 h-full items-center justify-center border-r border-gray-200 bg-gray-100">
+                  <Text className="text-gray-600 font-medium text-base">+66</Text>
+                </View>
                 <TextInput
-                  className="flex-1 text-gray-900 text-base"
-                  placeholder="+66812345678"
+                  className="flex-1 text-gray-900 text-base px-3"
+                  placeholder="812345678"
                   placeholderTextColor="#9CA3AF"
-                  value={form.emergency_contact}
-                  onChangeText={update('emergency_contact')}
+                  value={phoneDigits}
+                  onChangeText={handlePhoneChange}
                   keyboardType="phone-pad"
+                  maxLength={9}
                 />
-              </InputRow>
+              </View>
             </Field>
 
-            {/* ✅ Device Serial — field ใหม่ */}
             <Field label="Device Serial (จากแว่นตา ESP32)">
-              <InputRow icon="📡">
-                <TextInput
-                  className="flex-1 text-gray-900 text-base"
-                  placeholder="เช่น SE-001, SN-EYES-001"
-                  placeholderTextColor="#9CA3AF"
-                  value={form.device_serial}
-                  onChangeText={update('device_serial')}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                />
-              </InputRow>
+              <TextInput
+                className="border border-gray-200 rounded-xl px-4 bg-gray-50 h-12 text-gray-900 text-base"
+                placeholder="เช่น SE-001, SN-EYES-001"
+                placeholderTextColor="#9CA3AF"
+                value={form.device_serial}
+                onChangeText={update('device_serial')}
+                autoCapitalize="characters"
+                autoCorrect={false}
+              />
             </Field>
 
             <Field label="รายละเอียดความพิการ (ถ้ามี)">
-              <View className="border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50 min-h-[72px]">
+              <View className="border border-gray-200 rounded-xl px-4 py-3 bg-gray-50 min-h-[72px]">
                 <TextInput
                   className="text-gray-900 text-base"
                   placeholder="เช่น Macular Degeneration, ตาบอดสนิท"
@@ -234,7 +248,7 @@ export default function RegisterScreen() {
             >
               {isLoading
                 ? <ActivityIndicator color="#fff" />
-                : <Text className="text-white text-base font-bold">สมัครสมาชิก →</Text>
+                : <Text className="text-white text-base font-semibold">สมัครสมาชิก</Text>
               }
             </TouchableOpacity>
 
@@ -242,7 +256,7 @@ export default function RegisterScreen() {
               className="items-center mt-4"
               onPress={() => router.replace('/')}
             >
-              <Text className="text-sm text-gray-500">
+              <Text className="text-sm text-gray-400">
                 มีบัญชีแล้ว?{' '}
                 <Text className="text-[#0D6E4F] font-semibold">เข้าสู่ระบบ</Text>
               </Text>
@@ -258,16 +272,7 @@ export default function RegisterScreen() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <View className="mb-4">
-      <Text className="text-sm font-semibold text-gray-700 mb-1">{label}</Text>
-      {children}
-    </View>
-  );
-}
-
-function InputRow({ icon, children }: { icon: string; children: React.ReactNode }) {
-  return (
-    <View className="flex-row items-center border border-gray-200 rounded-xl px-3 bg-gray-50 h-12">
-      <Text className="text-base mr-2">{icon}</Text>
+      <Text className="text-sm font-medium text-gray-600 mb-1.5">{label}</Text>
       {children}
     </View>
   );
