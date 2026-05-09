@@ -202,26 +202,6 @@ def analyze_scene_with_ai(image_path, detections):
         print(f"⚠️ Gemini error: {e}")
     return fallback_response(detections)
 
-# ✅ บันทึก job log ลง database
-def save_job_to_db(job_id: str, device_serial: str, status: str,
-                   speech_text: str, image_path: str, audio_path: str):
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(
-            database.execute(job_logs.insert().values(
-                job_uuid=      job_id,
-                device_serial= device_serial,
-                status=        status,
-                result_text=   speech_text or "",
-                image_path=    image_path,
-                audio_path=    audio_path,
-            ))
-        )
-        loop.close()
-        print(f"✓ Saved to DB: {job_id}")
-    except Exception as e:
-        print(f"⚠️ DB save error: {e}")
 
 def process_image(job_id: str, file_path: str, enable_speech: bool = True,
                   device_serial: str = "SE-2026-X00"):  # ✅ เพิ่ม device_serial
@@ -389,33 +369,27 @@ def process_image(job_id: str, file_path: str, enable_speech: bool = True,
 
 def save_job_to_db(job_id: str, device_serial: str, status: str,
                    speech_text: str, image_path: str, audio_path: str):
-    """บันทึก job log ลง database (เรียกจาก background thread)"""
+    """บันทึก job log ลง database ด้วย sync SQLAlchemy (ปลอดภัยใน background thread)"""
     try:
-        from database import database
+        from database import engine
         from models import job_logs
 
-        async def _save():
-            # เช็คว่ามีอยู่แล้วไหม
-            existing = await database.fetch_one(
+        with engine.connect() as conn:
+            existing = conn.execute(
                 job_logs.select().where(job_logs.c.job_uuid == job_id)
-            )
+            ).fetchone()
             if existing:
                 return
-
-            await database.execute(job_logs.insert().values(
+            conn.execute(job_logs.insert().values(
                 job_uuid=      job_id,
                 device_serial= device_serial,
                 status=        status,
-                result_text=   speech_text,
+                result_text=   speech_text or "",
                 image_path=    image_path or None,
                 audio_path=    audio_path or None,
             ))
-            print(f"✓ Job {job_id} saved to DB")
-
-        # รัน async ใน thread ที่ไม่ใช่ event loop หลัก
-        loop = asyncio.new_event_loop()
-        loop.run_until_complete(_save())
-        loop.close()
+            conn.commit()
+        print(f"✓ Job {job_id} saved to DB")
 
     except Exception as e:
         print(f"❌ save_job_to_db error: {e}")

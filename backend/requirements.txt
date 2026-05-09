@@ -11,7 +11,7 @@ psycopg2-binary
 
 # Auth
 passlib[bcrypt]
-bcrypt
+bcrypt==4.0.1
 
 # AI / Vision
 torch
