@@ -24,12 +24,10 @@ from typing import Dict, Optional, List, Tuple, Any
 from PIL import Image, ImageFile
 from ultralytics.models import YOLO
 from gtts import gTTS
+from models import job_logs
 import google.generativeai as genai
-import asyncio
-
 # ✅ import database
 from database import database
-from models import job_logs
 from database import engine 
 try:
     from depth_pro import create_model_and_transforms, load_rgb
@@ -160,6 +158,28 @@ def estimate_distance_depthpro(depth_map, box, img_shape):
             distances.append(dist)
     return float(np.median(distances)) if distances else 5.0
 
+def estimate_distance_from_box_size(label, box, img_shape):
+    """
+    ประมาณระยะแบบหยาบจากขนาด bounding box เทียบกับขนาดภาพ
+    ใช้ตอนไม่มี Depth Pro (DEPTH_PRO_AVAILABLE = False หรือโหลดไม่สำเร็จ)
+    ยิ่ง box สูง (เทียบสัดส่วนภาพ) ยิ่งถือว่าใกล้
+    หมายเหตุ: นี่เป็นค่าประมาณหยาบ ไม่แม่นยำเท่าการวัดระยะจริงจาก depth model
+    """
+    x1, y1, x2, y2 = box
+    img_height, img_width = img_shape[:2]
+    box_height = max(1, y2 - y1)
+    ratio = box_height / img_height
+
+    ref_height = {
+        "person": 1.6, "car": 1.5, "motorcycle": 1.2, "bus": 3.0,
+        "truck": 2.5, "bicycle": 1.1, "dog": 0.5, "cat": 0.3,
+    }.get(label, 1.0)
+
+    if ratio <= 0.01:
+        return 30.0
+    dist = ref_height / ratio * 0.5
+    return float(max(0.5, min(dist, 30.0)))
+
 def fallback_response(detections):
     if not detections:
         return {"status": "fallback", "analysis": {"description": "ปลอดภัย", "place": "บริเวณที่ปลอดภัย"}}
@@ -202,9 +222,29 @@ def analyze_scene_with_ai(image_path, detections):
         print(f"⚠️ Gemini error: {e}")
     return fallback_response(detections)
 
+async def save_job_log(job_id: str, device_serial: str, status: str,
+                        result_text: str, image_path: Optional[str], audio_path: Optional[str]):
+    try:
+        existing = await database.fetch_one(
+            job_logs.select().where(job_logs.c.job_uuid == job_id)
+        )
+        if existing:
+            print(f"⚠️ Log {job_id} มีอยู่แล้ว ข้าม")
+            return
+        await database.execute(job_logs.insert().values(
+            job_uuid=      job_id,
+            device_serial= device_serial,
+            status=        status,
+            result_text=   result_text,
+            image_path=    image_path,
+            audio_path=    audio_path,
+        ))
+        print(f"✓ Log saved to DB for job {job_id}")
+    except Exception as e:
+        print(f"❌ Failed to save log: {e}")
 
 def process_image(job_id: str, file_path: str, enable_speech: bool = True,
-                  device_serial: str = "SE-2026-X00"):  # ✅ เพิ่ม device_serial
+                   device_serial: Optional[str] = None):
     global yolo_model, depth_model, depth_transform
     start_time = time.time()
     timing: Dict[str, float] = {}
@@ -215,8 +255,12 @@ def process_image(job_id: str, file_path: str, enable_speech: bool = True,
     output_path: Optional[Path] = None
 
     try:
+        # ✅ แก้: เช็คแค่ YOLO เป็น hard requirement
+        # Depth Pro เป็น optional — ถ้าไม่มี (ปิดไว้/โหลดไม่สำเร็จ) จะใช้ระยะแบบประมาณแทน
         if yolo_model is None:
-            raise RuntimeError("YOLO not loaded")
+            raise RuntimeError("YOLO model not loaded")
+
+        depth_enabled = depth_model is not None and depth_transform is not None
 
         with job_status_lock:
             job_status[job_id]["status"] = "processing"
@@ -245,11 +289,12 @@ def process_image(job_id: str, file_path: str, enable_speech: bool = True,
         )[0]
         timing["yolo"] = time.time() - t
 
-        # Depth
+        # Depth (optional)
         with job_status_lock:
             job_status[job_id]["progress"] = 50
         t = time.time()
-        if depth_model is not None and depth_transform is not None:
+        depth_map = None
+        if depth_enabled:
             transformed = depth_transform(rgb_pil)
             with torch.no_grad(), torch.inference_mode():
                 if device.type == 'cuda':
@@ -260,9 +305,6 @@ def process_image(job_id: str, file_path: str, enable_speech: bool = True,
             depth_map = predictions["depth"].cpu().numpy().squeeze()
             if depth_map.shape != (height, width):
                 depth_map = cv2.resize(depth_map, (width, height), interpolation=cv2.INTER_LINEAR)
-        else:
-            # ✅ fallback ถ้าไม่มี Depth Pro
-            depth_map = np.full((height, width), 5.0)
         timing["depth"] = time.time() - t
 
         # Process detections
@@ -279,10 +321,18 @@ def process_image(job_id: str, file_path: str, enable_speech: bool = True,
                     x1,y1,x2,y2 = int(x1/scale),int(y1/scale),int(x2/scale),int(y2/scale)
                 cx = (x1+x2)//2
                 cy = (y1+y2)//2
-                dist = estimate_distance_depthpro(depth_map, [x1,y1,x2,y2], (height,width))
-                if label == 'person':               dist = max(0.5, min(dist, 25.0))
+
+                # ✅ แก้: เลือกวิธีประมาณระยะตามว่ามี depth model จริงไหม
+                if depth_enabled and depth_map is not None:
+                    dist = estimate_distance_depthpro(depth_map, [x1,y1,x2,y2], (height,width))
+                    depth_source = "depth_pro"
+                else:
+                    dist = estimate_distance_from_box_size(label, [x1,y1,x2,y2], (height,width))
+                    depth_source = "box_size_estimate"
+
+                if label == 'person':          dist = max(0.5, min(dist, 25.0))
                 elif label in ['car','truck','bus']: dist = max(1.0, min(dist, 50.0))
-                else:                               dist = max(0.3, min(dist, 30.0))
+                else:                          dist = max(0.3, min(dist, 30.0))
                 if dist < 2.0:    dist = round(dist*2)/2
                 elif dist < 5.0:  dist = round(dist)
                 elif dist < 10.0: dist = round(dist*2)/2
@@ -294,13 +344,14 @@ def process_image(job_id: str, file_path: str, enable_speech: bool = True,
                     "id": idx+1, "label": label, "confidence": round(confidence,2),
                     "distance": round(dist,1), "distance_unit": "meters",
                     "position": pos, "box": [x1,y1,x2,y2], "center": [cx,cy],
-                    "depth_model": "depth_pro" if depth_model else "fallback",
+                    "depth_model": depth_source,
                 })
         timing["processing"] = time.time() - t
 
         # Save image
         output_path = OUTPUT_DIR / f"{job_id}.jpg"
         shutil.copy(file_path, output_path)
+
         output = sorted(output, key=lambda x: x['distance'])
 
         # AI Scene
@@ -321,7 +372,6 @@ def process_image(job_id: str, file_path: str, enable_speech: bool = True,
             timing["speech"] = time.time() - t
 
         total = time.time() - start_time
-
         with job_status_lock:
             job_status[job_id].update({
                 "status": "completed", "progress": 100,
@@ -332,18 +382,19 @@ def process_image(job_id: str, file_path: str, enable_speech: bool = True,
                 "timing": {"total_seconds": round(total,3),
                            "breakdown": {k: round(v,3) for k,v in timing.items()}},
             })
-
-        # ✅ บันทึกลง database
-        save_job_to_db(
-            job_id=       job_id,
-            device_serial=device_serial,
-            status=       "completed",
-            speech_text=  speech_text or "",
-            image_path=   str(output_path) if output_path else "",
-            audio_path=   audio_path or "",
-        )
-
         print(f"✓ Job {job_id} done in {total:.2f}s")
+
+        # ✅ บันทึก log ลง DB อัตโนมัติ (ถ้ามี device_serial)
+        if device_serial:
+            try:
+                save_job_to_db(
+                    job_id, device_serial, "completed",
+                    speech_text or "ปลอดภัย",
+                    str(output_path) if output_path else None,
+                    audio_path,
+                )
+            except Exception as e:
+                print(f"❌ DB log error: {e}")
 
     except Exception as e:
         total = time.time() - start_time
@@ -353,32 +404,26 @@ def process_image(job_id: str, file_path: str, enable_speech: bool = True,
                 "end_time": datetime.now().isoformat(),
                 "timing": {"total_seconds": round(total,3)},
             })
-        # ✅ บันทึก failed ลง database ด้วย
-        
-        save_job_to_db(
-            job_id=       job_id,
-            device_serial=device_serial,
-            status=       "failed",
-            speech_text=  str(e),
-            image_path=   "",
-            audio_path=   "",
-        )
         print(f"✗ Job {job_id} failed: {e}")
-    
+
+        # ✅ บันทึก log แม้ failed ด้วย (ถ้ามี device_serial)
+        if device_serial:
+            try:
+                save_job_to_db(job_id, device_serial, "failed", str(e), None, None)
+            except Exception as log_err:
+                print(f"❌ DB log error: {log_err}")
 
 
 def save_job_to_db(job_id: str, device_serial: str, status: str,
                    speech_text: str, image_path: str, audio_path: str):
     """บันทึก job log ลง database ด้วย sync SQLAlchemy (ปลอดภัยใน background thread)"""
     try:
-        from database import engine
-        from models import job_logs
-
         with engine.connect() as conn:
             existing = conn.execute(
                 job_logs.select().where(job_logs.c.job_uuid == job_id)
             ).fetchone()
             if existing:
+                print(f"⚠️ Log {job_id} มีอยู่แล้ว ข้าม")
                 return
             conn.execute(job_logs.insert().values(
                 job_uuid=      job_id,
@@ -423,11 +468,15 @@ def load_models():
             print(f"❌ Depth Pro error: {e}")
             depth_model = depth_transform = None
     else:
-        print("❌ Depth Pro not available")
+        # ✅ ปิด Depth Pro ไว้ตามต้องการ — depth_model/depth_transform จะเป็น None
+        # process_image() จะใช้ estimate_distance_from_box_size() แทนโดยอัตโนมัติ
+        print("⏭️ Depth Pro ปิดอยู่ (DEPTH_PRO_AVAILABLE=False) — ใช้ระยะแบบประมาณจากขนาด box แทน")
+        depth_model = None
+        depth_transform = None
 
     print("Loading Gemini...")
     key = os.getenv("GEMINI_API_KEY", "").strip()
-    if key and key.startswith("AIza"):
+    if key:
         try:
             genai.configure(api_key=key)
             gemini_model = genai.GenerativeModel(
@@ -438,10 +487,9 @@ def load_models():
                     "HARM_CATEGORY_SEXUALLY_EXPLICIT","HARM_CATEGORY_DANGEROUS_CONTENT",
                 ]],
             )
-            test = gemini_model.generate_content("ตอบ: OK",
-                generation_config=genai.GenerationConfig(max_output_tokens=10))
-            if test.candidates:
-                print(f"✓ Gemini loaded")
+            # หมายเหตุ: ไม่เรียก test generate_content() ตอน startup โดยตั้งใจ
+            # เพื่อไม่กิน free-tier quota (5 req/min) ทุกครั้งที่ uvicorn restart
+            print("✓ Gemini configured สำเร็จ (จะทดสอบจริงตอนใช้งานครั้งแรก)")
         except Exception as e:
             print(f"❌ Gemini error: {e}")
             gemini_model = None
@@ -450,10 +498,10 @@ def load_models():
 
 class ImagePayload(BaseModel):
     file: str
+    device_serial: Optional[str] = None
 
 @router.post("/detect")
 async def detect(payload: ImagePayload, enable_speech: bool = True,
-                 device_serial: str = "SE-2026-X00",
                  background_tasks: BackgroundTasks = BackgroundTasks()):
     try:
         job_id = str(uuid.uuid4())
@@ -468,18 +516,16 @@ async def detect(payload: ImagePayload, enable_speech: bool = True,
             "status": "queued", "progress": 0,
             "job_id": job_id, "created_time": datetime.now().isoformat(),
         }
-        background_tasks.add_task(process_image, job_id, str(file_path), enable_speech, device_serial)
+        background_tasks.add_task(process_image, job_id, str(file_path), enable_speech, payload.device_serial)
         return {"job_id": job_id, "status": "queued"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.post("/detectpostman")
-async def detect_postman(
-    file: UploadFile = File(...),
-    enable_speech: bool = True,
-    device_serial: str = "SE-2026-X00",   # ✅ เพิ่ม param
-    background_tasks: BackgroundTasks = BackgroundTasks()
-):
+async def detect_postman(file: UploadFile = File(...), enable_speech: bool = True,
+                         device_serial: Optional[str] = None,
+                         background_tasks: BackgroundTasks = BackgroundTasks()):
     try:
         job_id    = str(uuid.uuid4())
         file_path = UPLOAD_DIR / f"{job_id}_{file.filename}"
@@ -493,6 +539,7 @@ async def detect_postman(
         return {"job_id": job_id, "status": "queued"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
 
 @router.get("/status/{job_id}")
 async def get_status(job_id: str):
@@ -545,6 +592,27 @@ async def get_image(job_id: str):
     if not image_path or not Path(image_path).exists():
         raise HTTPException(status_code=404, detail="Image not found")
     return FileResponse(image_path, media_type="image/jpeg")
+
+@router.get("/logs/{device_serial}")
+async def get_logs_by_device(device_serial: str, limit: int = 50):
+    """ดึง log การ detect ทั้งหมดของ device_serial หนึ่งๆ จาก database เรียงจากล่าสุดไปเก่าสุด"""
+    rows = await database.fetch_all(
+        job_logs.select()
+        .where(job_logs.c.device_serial == device_serial)
+        .order_by(job_logs.c.id.desc())
+        .limit(limit)
+    )
+    return [dict(row._mapping) for row in rows]
+
+@router.get("/logs")
+async def get_all_logs(limit: int = 50, status: Optional[str] = None):
+    """ดึง log ทั้งหมดจาก database (filter ตาม status ได้ เช่น completed/failed)"""
+    query = job_logs.select()
+    if status:
+        query = query.where(job_logs.c.status == status)
+    query = query.order_by(job_logs.c.id.desc()).limit(limit)
+    rows = await database.fetch_all(query)
+    return [dict(row._mapping) for row in rows]
 
 @router.get("/health")
 async def health():

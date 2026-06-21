@@ -14,6 +14,8 @@ export default function LoginScreen() {
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const { login, isLoading, isAuthenticated } = useAuthStore();
+    const [needsUserAction, setNeedsUserAction] = useState(false);
+    
 
     useEffect(() => {
         if (isAuthenticated) {

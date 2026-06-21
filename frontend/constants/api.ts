@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
  
 export const API_BASE_URL = Platform.OS === 'web'
   ? 'http://localhost:8000'
-  : 'http://192.168.1.6:8000';
+  : 'http://172.20.10.3:8000';
  
 export const ENDPOINTS = {
   detect:        `${API_BASE_URL}/detect`,

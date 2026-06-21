@@ -33,7 +33,9 @@ metadata.create_all(engine)
 async def startup():
     await database.connect()
     print("✓ Database connected")
-    load_models()
+    import ai_router
+    ai_router.load_models()
+    print(f"✓ yolo_model after load: {ai_router.yolo_model}")
 
 @app.on_event("shutdown")
 async def shutdown():
