@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Request
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 from threading import Lock
@@ -498,12 +498,12 @@ def load_models():
 
 class ImagePayload(BaseModel):
     file: str
-    device_serial: Optional[str] = None
 
 @router.post("/detect")
-async def detect(payload: ImagePayload, enable_speech: bool = True,
+async def detect(request: Request, payload: ImagePayload, enable_speech: bool = True,
                  background_tasks: BackgroundTasks = BackgroundTasks()):
     try:
+        device_serial = request.headers.get("X-Device-Serial")
         job_id = str(uuid.uuid4())
         base64_str = payload.file
         if "," in base64_str:
@@ -516,7 +516,7 @@ async def detect(payload: ImagePayload, enable_speech: bool = True,
             "status": "queued", "progress": 0,
             "job_id": job_id, "created_time": datetime.now().isoformat(),
         }
-        background_tasks.add_task(process_image, job_id, str(file_path), enable_speech, payload.device_serial)
+        background_tasks.add_task(process_image, job_id, str(file_path), enable_speech, device_serial)
         return {"job_id": job_id, "status": "queued"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

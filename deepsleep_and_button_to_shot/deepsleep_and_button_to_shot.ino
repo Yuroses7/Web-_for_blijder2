@@ -5,34 +5,20 @@
 #include "esp_camera.h"
 #include "base64.h"
 
-// Audio Libraries
-#include "AudioFileSourceHTTPStream.h"
-#include "AudioGeneratorMP3.h"
-#include "AudioOutputI2S.h"
-
 // ====== WiFi Config ======
-const char* WIFI_SSID = "Mi";
-const char* WIFI_PASS = "owen23178";
+const char* WIFI_SSID = "J3K";
+const char* WIFI_PASS = "00000000";
 
 // ====== YOUR API URL ======
-const char* SERVER_HOST = "10.85.230.85"; 
+const char* SERVER_HOST = "192.168.0.200";
 const int   SERVER_PORT = 8000;
-String BASE_URL = "http://10.85.230.85:8000";
-
-// Audio Objects
-AudioOutputI2S* audioOut;
-AudioFileSourceHTTPStream* audioFile;
-AudioGeneratorMP3* mp3;
+String BASE_URL = "http://" + String(SERVER_HOST) + ":" + String(SERVER_PORT);
 
 // ====== Pin Definitions ======
-#define I2S_BCLK  21
-#define I2S_LRCLK 22
-#define I2S_DOUT  19
-
 // เพิ่มขาปุ่ม
 #define BUTTON_PIN 15
 
-const char* DEVICE_ID = "GLASSES_001";  
+const char* DEVICE_ID = "11";  
 
 void camera_setup() {
     Serial.println("[INIT] 📷 Initializing Camera...");
@@ -113,7 +99,7 @@ String sendImageAndGetJobID() {
 
   size_t base64Len = ((fb->len + 2) / 3) * 4;
   
-  String jsonHead = "{\"device_id\":\"" + fullDeviceId + "\",\"file\":\"data:image/jpeg;base64,";
+  String jsonHead = "{\"file\":\"data:image/jpeg;base64,";
   String jsonTail = "\"}";
   size_t totalLen = jsonHead.length() + base64Len + jsonTail.length();
 
@@ -127,9 +113,12 @@ String sendImageAndGetJobID() {
     return "";
   }
 
+  String deviceSerial = fullDeviceId;
+
   client.println("POST /detect?enable_speech=true HTTP/1.1");
   client.println("Host: " + String(SERVER_HOST) + ":" + String(SERVER_PORT));
   client.println("Content-Type: application/json");
+  client.println("X-Device-Serial: " + deviceSerial);
   client.print("Content-Length: "); client.println(totalLen);
   client.println("Connection: close");
   client.println();
@@ -231,61 +220,10 @@ bool waitForJobDone(String job_id, String &speech) {
 }
 
 void playAudioFromServer(String job_id) {
-  Serial.println("💤 De-initializing Camera...");
-  esp_camera_deinit(); 
-  delay(500); 
-
-  Serial.println("\n[STEP 7] 🔊 Requesting audio...");
-  String url = BASE_URL + "/audio/" + job_id;
-  
-  pinMode(I2S_BCLK, OUTPUT); digitalWrite(I2S_BCLK, LOW);
-  pinMode(I2S_LRCLK, OUTPUT); digitalWrite(I2S_LRCLK, LOW);
-  pinMode(I2S_DOUT, OUTPUT); digitalWrite(I2S_DOUT, LOW);
-  delay(100);
-
-  audioOut = new AudioOutputI2S();
-  audioOut->SetPinout(I2S_BCLK, I2S_LRCLK, I2S_DOUT);
-  audioOut->SetGain(0.1); 
-
-  audioFile = new AudioFileSourceHTTPStream();
-  mp3 = new AudioGeneratorMP3();
-
-  Serial.print("Connecting stream... ");
-  if (audioFile->open(url.c_str())) {
-      Serial.println("OK");
-      
-      int fileSize = audioFile->getSize();
-      Serial.printf("📁 Audio File Size: %d bytes\n", fileSize);
-      if (fileSize < 1000) { Serial.println("⚠️ File too small! Possible error."); }
-      
-      if (mp3->begin(audioFile, audioOut)) {
-          Serial.println("♫ Playing...");
-          unsigned long start = millis();
-          int loopCount = 0;
-          
-          while (mp3->isRunning()) {
-              if (!mp3->loop()) {
-                  Serial.println("⚠️ MP3 Loop returned false");
-                  mp3->stop(); break;
-              }
-              loopCount++;
-              if (millis() - start > 60000) {
-                  Serial.println("⏱️ Timeout!");
-                  mp3->stop(); break;
-              }
-              yield();
-          }
-          unsigned long elapsed = millis() - start;
-          Serial.printf("✓ Playback finished in %lu ms\n", elapsed);
-      } else { Serial.println("❌ MP3 Begin Failed"); }
-  } else { Serial.println("❌ Open URL Failed"); }
-
-  audioFile->close();
-  delete mp3; delete audioFile; delete audioOut;
-  
-  Serial.println("\n🔄 Job Finished. Restarting System to clear memory...");
+  Serial.println("\n[STEP 7] 🔊 Audio not implemented.");
+  Serial.println("\n🔄 Job Finished. Restarting...");
   delay(2000);
-  ESP.restart(); 
+  ESP.restart();
 }
 
 // ============================================
